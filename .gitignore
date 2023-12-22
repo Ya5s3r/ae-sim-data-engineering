@@ -1,11 +1,10 @@
 # Airflow-related files and folders
-airflow/
 *.pyc
 *.pyo
 *.pyd
 
 # Airflow logs
-#/airflow/logs/
+/airflow/logs/*
 #airflow/*/[Ll]ogs/*
 # Logs
 *.log
