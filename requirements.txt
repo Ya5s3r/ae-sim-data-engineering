@@ -1,0 +1,6 @@
+psycopg2-binary
+pyodbc
+pandas==1.4.4
+numpy==1.23.1
+simpy==4.0.1
+matplotlib==3.6.1
