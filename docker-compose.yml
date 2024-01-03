@@ -26,31 +26,38 @@ services:
     image: postgres
     restart: always
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=source_system
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: source_system
+      #this ENV variable is only required for the healthcheck section - if you don't specify it, the check command will fail stating the root user doesn't exist in posgres
+      PGUSER: "postgres"
     ports:
-      - 5432
+      - 5432:5432
+    volumes:
+      - postgres:/var/lib/postgresql/data
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}" ]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  python-app:
-    build:
-      context: .
-    depends_on:
-      postgres:
-        condition: service_healthy
+  # python-app:
+  #   build:
+  #     context: .
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
 
   pgadmin:
     image: dpage/pgadmin4
+    restart: always
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@example.com
       PGADMIN_DEFAULT_PASSWORD: admin
     ports:
       - "5050:80"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
       
   scheduler:
     build:
@@ -75,6 +82,8 @@ services:
     restart: on-failure
     ports:
       - "8793:8793"
+    secrets:
+      - azure_secret
  
   webserver:
     build:
@@ -104,6 +113,8 @@ services:
       interval: 30s
       timeout: 30s
       retries: 5
+    secrets:
+      - azure_secret
    
   airflow-init:
     build:
@@ -126,3 +137,12 @@ services:
         mkdir -p /sources/logs /sources/dags /sources/plugins
         chown -R "${AIRFLOW_UID}:0" /sources/{logs,dags,plugins}
         exec /entrypoint airflow version
+        
+secrets:
+  azure_secret:
+    file: ./azure_secret.txt
+
+volumes:
+  postgres:
+    driver: local
+  pgadmin-data:

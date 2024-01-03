@@ -11,6 +11,9 @@ RUN pip install -r requirements.txt
 # Install Apache Airflow providers
 RUN pip install apache-airflow-providers-postgres apache-airflow-providers-microsoft-azure
 
+# Initialize the Airflow database during the build
+RUN airflow db init
+
 # Copy your Python scripts into the container
 COPY src/ .
 

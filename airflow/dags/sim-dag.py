@@ -1,7 +1,11 @@
 import sys
 import psycopg2
-import pyodbc
+#import pyodbc
 import pandas as pd
+
+import os, uuid
+from azure.identity import DefaultAzureCredential
+from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
 
 from datetime import datetime, timedelta
 import pendulum
@@ -68,6 +72,23 @@ def read_data_from_postgres():
         # Close the cursor and connection
         cursor.close()
         connection.close()
+
+# insert data into storage
+def insert_into_azure_str():
+    # below gets the secret key for Azure storage access, which was added using docker secrets, for example:
+    # docker swarm init
+    # echo "my_secret_key" | docker secret create my_secret_key -
+    secret_path = "/run/secrets/azure_secret"
+    with open(secret_path, "r") as secret_file:
+        connect_str = secret_file.read().strip()
+    try:
+        print("Azure Blob Storage Python quickstart sample")
+        # Create the BlobServiceClient object
+        blob_service_client = BlobServiceClient.from_connection_string(connect_str)
+
+    except Exception as ex:
+        print('Exception:')
+        print(ex)
 
 # function to insert data into Azure SQL db
 # def insert_into_azure_df(df):
@@ -169,6 +190,10 @@ def sim_taskflow_api():
         #print(result[:10])
         return result
     
+    @task()
+    def upload_to_azure():
+        insert_into_azure_str()
+    
     # @task()
     # def insert_into_azure(df):
     #     insert_into_azure_df(df)
@@ -179,7 +204,7 @@ def sim_taskflow_api():
     #     dag=sim_taskflow_api,
     # )
     # Set up dependencies
-    start_task >> loop_simulation() >> extract_from_postgres()
+    start_task >> loop_simulation() >> extract_from_postgres() >> upload_to_azure()
 # Instantiate the DAG
 dag_instance = sim_taskflow_api()
 
