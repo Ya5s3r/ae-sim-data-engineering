@@ -4,6 +4,7 @@ import psycopg2
 import pandas as pd
 
 import os, uuid
+from io import BytesIO
 from azure.identity import DefaultAzureCredential
 from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
 
@@ -74,7 +75,7 @@ def read_data_from_postgres():
         connection.close()
 
 # insert data into storage
-def insert_into_azure_str():
+def insert_into_azure_str(df):
     # below gets the secret key for Azure storage access, which was added using docker secrets, for example:
     # docker swarm init
     # echo "my_secret_key" | docker secret create my_secret_key -
@@ -86,29 +87,29 @@ def insert_into_azure_str():
         # Create the BlobServiceClient object
         blob_service_client = BlobServiceClient.from_connection_string(connect_str)
         # Create a unique name for the container
-        container_name = str(uuid.uuid4())
+        #container_name = str(uuid.uuid4())
+        container_name = "data"
+        file_name = "sim_data.parquet"
 
-        # Create the container
-        # container_client = blob_service_client.create_container(container_name)
+        # Get a reference to the container
+        container_client = blob_service_client.get_container_client(container_name)
+        # Check if the container exists, and create it if not
+        if not container_client.exists():
+            container_client.create_container()
+        # Get a reference to the blob
+        blob_client = container_client.get_blob_client(blob=file_name)        
 
-        # # Create a local directory to hold blob data
-        # local_path = "./data"
-        # os.mkdir(local_path)
+        print("\nUploading to Azure Storage as blob:\n\t" + file_name)
 
-        # # Create a file in the local data directory to upload and download
-        # local_file_name = str(uuid.uuid4()) + ".txt"
-        # upload_file_path = os.path.join(local_path, local_file_name)
+        parquet_file = BytesIO()
+        df.to_parquet(parquet_file, engine='pyarrow')
+        parquet_file.seek(0)  # change the stream position back to the beginning after writing
 
-        # # Write text to the file
-        # file = open(file=upload_file_path, mode='w')
-        # file.write("Hello, World!")
-        # file.close()
-
-        # # Create a blob client using the local file name as the name for the blob
-        # blob_client = blob_service_client.get_blob_client(container=container_name, blob=local_file_name)
-
-        # print("\nUploading to Azure Storage as blob:\n\t" + local_file_name)
-
+        blob_client.upload_blob(
+            data=parquet_file,
+            overwrite=True
+        )
+        print("upload complete!")
         # # Upload the created file
         # with open(file=upload_file_path, mode="rb") as data:
         #     blob_client.upload_blob(data)
@@ -219,8 +220,8 @@ def sim_taskflow_api():
         return result
     
     @task()
-    def upload_to_azure():
-        insert_into_azure_str()
+    def upload_to_azure(df):
+        insert_into_azure_str(df=df)
     
     # @task()
     # def insert_into_azure(df):
@@ -232,7 +233,7 @@ def sim_taskflow_api():
     #     dag=sim_taskflow_api,
     # )
     # Set up dependencies
-    start_task >> loop_simulation() >> extract_from_postgres() >> upload_to_azure()
+    start_task >> loop_simulation() >> upload_to_azure(extract_from_postgres())
 # Instantiate the DAG
 dag_instance = sim_taskflow_api()
 
