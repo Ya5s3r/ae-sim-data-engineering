@@ -89,7 +89,8 @@ def insert_into_azure_str(df):
         # Create a unique name for the container
         #container_name = str(uuid.uuid4())
         container_name = "data"
-        file_name = "sim_data.parquet"
+        file_name_parquet = "sim_data.parquet"
+        file_name_csv = "sim_data.csv"
 
         # Get a reference to the container
         container_client = blob_service_client.get_container_client(container_name)
@@ -97,9 +98,9 @@ def insert_into_azure_str(df):
         if not container_client.exists():
             container_client.create_container()
         # Get a reference to the blob
-        blob_client = container_client.get_blob_client(blob=file_name)        
+        blob_client = container_client.get_blob_client(blob=file_name_parquet)        
 
-        print("\nUploading to Azure Storage as blob:\n\t" + file_name)
+        print("\nUploading to Azure Storage as blob:\n\t" + file_name_parquet)
 
         parquet_file = BytesIO()
         df.to_parquet(parquet_file, engine='pyarrow')
@@ -109,7 +110,20 @@ def insert_into_azure_str(df):
             data=parquet_file,
             overwrite=True
         )
-        print("upload complete!")
+        print("Parquet upload complete!")
+
+        # Get a reference to the CSV blob
+        blob_client_csv = container_client.get_blob_client(blob=file_name_csv)
+
+        # Upload CSV data
+        csv_file = BytesIO()
+        df.to_csv(csv_file, index=False)
+        csv_file.seek(0)
+        blob_client_csv.upload_blob(
+            data=csv_file,
+            overwrite=True
+        )
+        print("CSV upload complete!")
         # # Upload the created file
         # with open(file=upload_file_path, mode="rb") as data:
         #     blob_client.upload_blob(data)
