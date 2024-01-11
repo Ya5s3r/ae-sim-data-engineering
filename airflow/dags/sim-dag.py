@@ -1,6 +1,6 @@
 import sys
 import psycopg2
-#import pyodbc
+import pyodbc
 import pandas as pd
 
 import os, uuid
@@ -22,6 +22,7 @@ from airflow.operators.empty import EmptyOperator
 from airflow.providers.postgres.operators.postgres import PostgresOperator
 #from airflow.providers.microsoft.azure.transfers.azure_data_lake_gen2_to_parquet import AzureDataLakeStorageGen2ToParquetOperator
 from airflow.decorators import dag, task, task_group
+from airflow.models import Variable
 
 # function to read in postgres data
 def read_data_from_postgres():
@@ -83,7 +84,7 @@ def insert_into_azure_str(df):
     with open(secret_path, "r") as secret_file:
         connect_str = secret_file.read().strip()
     try:
-        print("Azure Blob Storage Python quickstart sample")
+        print("Placing data as Azure Blob storage in parquet format")
         # Create the BlobServiceClient object
         blob_service_client = BlobServiceClient.from_connection_string(connect_str)
         # Create a unique name for the container
@@ -134,49 +135,113 @@ def insert_into_azure_str(df):
         print(ex)
 
 # function to insert data into Azure SQL db
-# def insert_into_azure_df(df):
-#     drivers = [item for item in pyodbc.drivers()]
-#     driver = drivers[-1]
-#     print("driver:{}".format(driver))
-#     server = 'freesqldbserver-ym.database.windows.net' 
-#     database = 'myFreeDB' 
-#     username = 'freedb' 
-#     password = 'DBya55er' 
-#     #driver= '{ODBC Driver 17 for SQL Server}'
-#     conn = pyodbc.connect('DRIVER=' + driver + ';SERVER=' +
-#         server + ';DATABASE=' + database +
-#         ';UID=' + username + ';PWD=' + password)
-#         # removed after server + ;PORT=1433
-#     try:
-#         cursor = conn.cursor()
-#         # Insert Dataframe into SQL Server:
-#         for index, row in df.iterrows():
-#             cursor.execute("INSERT INTO Summary.SimTest (patient_id, provider_id, arrival_mode, priority, triage_outcome, time_in_system, attendance_time, departure_time, admitted, doctor_id_seen) values(?,?,?,?,?,?,?,?,?,?)",
-#                             row.patient_id, 
-#                             row.provider_id, 
-#                             row.arrival_mode,
-#                             row.priority,
-#                             row.triage_outcome,
-#                             row.time_in_system,
-#                             row.attendance_time,
-#                             row.departure_time,
-#                             row.admitted,
-#                             row.doctor_id_seen)
-#         conn.commit()
-#         cursor.close()
-#     except pyodbc.Error as e:
-#         # Print the error details
-#         print(f"PyODBC Error: {e}")
-#         print("SQL State:", e.sqlstate)
-#         print("Native Error:", e.native_error)
-#         print("Error Message:", e)
-#         #traceback.print_exc()
+def insert_into_azure_sql():
+    secret_path = "/run/secrets/azure_secret"
+    with open(secret_path, "r") as secret_file:
+        connect_str = secret_file.read().strip()
+    
+    try:
+        print("Getting data from Azure Blob and inserting into Azure SQL")
+        container_name = "data"
+        file_name_parquet = "sim_data.parquet"
+        # Create the BlobServiceClient object
+        blob_service_client = BlobServiceClient.from_connection_string(connect_str)
 
-#         # You might want to raise the exception again if you want Airflow to mark the task as failed
-#         raise
-#     finally:
-#         # Close the database connection
-#         conn.close()
+        # Get a reference to the container
+        container_client = blob_service_client.get_container_client(container_name)
+
+        # Get a reference to the blob
+        blob_client = container_client.get_blob_client(blob=file_name_parquet) 
+
+        print("\nListing blobs...")
+
+        # List the blobs in the container
+        blob_list = container_client.list_blobs()
+        for blob in blob_list:
+            print("\t" + blob.name)
+
+        downloaded_blob = container_client.download_blob(file_name_parquet)
+        bytes_io = BytesIO(downloaded_blob.readall())
+        df = pd.read_parquet(bytes_io)
+        print(df.head())
+
+        ### insert into Azure SQL
+        # drivers = [item for item in pyodbc.drivers()]
+        # driver = drivers[-1]
+        # print("driver:{}".format(driver))
+
+        # get variables from Airflow
+        server_name = Variable.get("server_port")
+        database_name = Variable.get("database")
+        username = Variable.get("username")
+        password = Variable.get("password")
+
+        # Create a connection string
+        conn_str = f"DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={server_name};DATABASE={database_name};UID={username};PWD={password}"
+        print("THIS IS THE CONNECTION STRING: ", conn_str)
+
+        # Establish the connection
+        conn = pyodbc.connect(conn_str)
+        cursor = conn.cursor()
+
+        # Insert rows from the DataFrame into the SQL Server table
+        for index, row in df.iterrows():
+            cursor.execute(
+                "INSERT INTO Summary.SimTest (patient_id, provider_id, arrival_mode, priority, triage_outcome, time_in_system, attendance_time, departure_time, admitted, doctor_id_seen) "
+                "OUTPUT INSERTED.patient_id "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                row['patient_id'], row['provider_id'], row['arrival_mode'], row['priority'], row['triage_outcome'], row['time_in_system'], row['attendance_time'], row['departure_time'], row['admitted'], row['doctor_id_seen'] 
+            )
+            inserted_patient_id = cursor.fetchone()[0]
+            print(f"Inserted Patient ID: {inserted_patient_id}")
+
+        # Commit the changes and close the connection
+        conn.commit()
+        conn.close()
+    except Exception as ex:
+            print('Exception:')
+            print(ex)
+
+    
+    # server = 'freesqldbserver-ym.database.windows.net' 
+    # database = 'myFreeDB' 
+    # username = 'freedb' 
+    # password = 'DBya55er' 
+    # #driver= '{ODBC Driver 17 for SQL Server}'
+    # conn = pyodbc.connect('DRIVER=' + driver + ';SERVER=' +
+    #     server + ';DATABASE=' + database +
+    #     ';UID=' + username + ';PWD=' + password)
+    #     # removed after server + ;PORT=1433
+    # try:
+    #     cursor = conn.cursor()
+    #     # Insert Dataframe into SQL Server:
+    #     for index, row in df.iterrows():
+    #         cursor.execute("INSERT INTO Summary.SimTest (patient_id, provider_id, arrival_mode, priority, triage_outcome, time_in_system, attendance_time, departure_time, admitted, doctor_id_seen) values(?,?,?,?,?,?,?,?,?,?)",
+    #                         row.patient_id, 
+    #                         row.provider_id, 
+    #                         row.arrival_mode,
+    #                         row.priority,
+    #                         row.triage_outcome,
+    #                         row.time_in_system,
+    #                         row.attendance_time,
+    #                         row.departure_time,
+    #                         row.admitted,
+    #                         row.doctor_id_seen)
+    #     conn.commit()
+    #     cursor.close()
+    # except pyodbc.Error as e:
+    #     # Print the error details
+    #     print(f"PyODBC Error: {e}")
+    #     print("SQL State:", e.sqlstate)
+    #     print("Native Error:", e.native_error)
+    #     print("Error Message:", e)
+    #     #traceback.print_exc()
+
+    #     # You might want to raise the exception again if you want Airflow to mark the task as failed
+    #     raise
+    # finally:
+    #     # Close the database connection
+    #     conn.close()
 @dag(
     schedule_interval="0 6 * * *",
     start_date=datetime(2023, 1, 1, tzinfo=pendulum.timezone("UTC")),
@@ -236,6 +301,10 @@ def sim_taskflow_api():
     @task()
     def upload_to_azure(df):
         insert_into_azure_str(df=df)
+
+    @task()
+    def insert_to_sql():
+        insert_into_azure_sql()
     
     # @task()
     # def insert_into_azure(df):
@@ -247,7 +316,7 @@ def sim_taskflow_api():
     #     dag=sim_taskflow_api,
     # )
     # Set up dependencies
-    start_task >> loop_simulation() >> upload_to_azure(extract_from_postgres())
+    start_task >> loop_simulation() >> upload_to_azure(extract_from_postgres()) >> insert_to_sql()
 # Instantiate the DAG
 dag_instance = sim_taskflow_api()
 
