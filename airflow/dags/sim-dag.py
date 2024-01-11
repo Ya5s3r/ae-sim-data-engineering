@@ -76,7 +76,9 @@ def read_data_from_postgres():
         connection.close()
 
 # insert data into storage
-def insert_into_azure_str(df):
+def insert_into_azure_str():
+    # get current data in Postgres
+    df = read_data_from_postgres()
     # below gets the secret key for Azure storage access, which was added using docker secrets, for example:
     # docker swarm init
     # echo "my_secret_key" | docker secret create my_secret_key -
@@ -113,18 +115,19 @@ def insert_into_azure_str(df):
         )
         print("Parquet upload complete!")
 
+        ### csv creation and upload if needed ###
         # Get a reference to the CSV blob
-        blob_client_csv = container_client.get_blob_client(blob=file_name_csv)
+        # blob_client_csv = container_client.get_blob_client(blob=file_name_csv)
 
-        # Upload CSV data
-        csv_file = BytesIO()
-        df.to_csv(csv_file, index=False)
-        csv_file.seek(0)
-        blob_client_csv.upload_blob(
-            data=csv_file,
-            overwrite=True
-        )
-        print("CSV upload complete!")
+        # # Upload CSV data
+        # csv_file = BytesIO()
+        # df.to_csv(csv_file, index=False)
+        # csv_file.seek(0)
+        # blob_client_csv.upload_blob(
+        #     data=csv_file,
+        #     overwrite=True
+        # )
+        # print("CSV upload complete!")
         # # Upload the created file
         # with open(file=upload_file_path, mode="rb") as data:
         #     blob_client.upload_blob(data)
@@ -202,6 +205,32 @@ def insert_into_azure_sql():
             print('Exception:')
             print(ex)
 
+def clean_up_postgres():
+    ### function to clean up data left in postgres and in Azure Blob to limit size of file ###
+    # Modify these parameters with your database credentials
+    db_params = {
+        'host': 'postgres',
+        'database': 'source_system',
+        'user': 'postgres',
+        'password': 'postgres',
+        'port': '5432',
+    }
+
+    # Define your SQL query
+    sql_query = "TRUNCATE TABLE store.ae_attends;"
+
+    # Connect to the database
+    connection = psycopg2.connect(**db_params)
+    cursor = connection.cursor()
+
+    try:
+        # Execute the query
+        cursor.execute(sql_query)
+    
+    finally:
+        # Close the cursor and connection
+        cursor.close()
+        connection.close()
     
     # server = 'freesqldbserver-ym.database.windows.net' 
     # database = 'myFreeDB' 
@@ -291,20 +320,24 @@ def sim_taskflow_api():
         for run_number in range(1, number_of_runs + 1):
             run_simulation(run_number) 
             
-    @task()
-    def extract_from_postgres():
-        result = read_data_from_postgres()
-        # Do something with the result, e.g., write to a file, process the data, etc.
-        #print(result[:10])
-        return result
+    # @task()
+    # def extract_from_postgres():
+    #     result = read_data_from_postgres()
+    #     # Do something with the result, e.g., write to a file, process the data, etc.
+    #     #print(result[:10])
+    #     return result
     
     @task()
-    def upload_to_azure(df):
-        insert_into_azure_str(df=df)
+    def upload_to_azure():
+        insert_into_azure_str()
 
     @task()
     def insert_to_sql():
         insert_into_azure_sql()
+    
+    @task()
+    def clean_up():
+        clean_up_postgres()
     
     # @task()
     # def insert_into_azure(df):
@@ -316,7 +349,8 @@ def sim_taskflow_api():
     #     dag=sim_taskflow_api,
     # )
     # Set up dependencies
-    start_task >> loop_simulation() >> upload_to_azure(extract_from_postgres()) >> insert_to_sql()
+    start_task >> loop_simulation() >> upload_to_azure() >> insert_to_sql() >> clean_up()
+    # start_task >> loop_simulation() >> upload_to_azure(extract_from_postgres()) >> insert_to_sql()
 # Instantiate the DAG
 dag_instance = sim_taskflow_api()
 
