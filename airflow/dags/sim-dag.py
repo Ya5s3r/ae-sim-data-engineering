@@ -1,4 +1,5 @@
 import sys
+import time
 import psycopg2
 import pyodbc
 import pandas as pd
@@ -143,68 +144,85 @@ def insert_into_azure_sql():
     with open(secret_path, "r") as secret_file:
         connect_str = secret_file.read().strip()
     
-    try:
-        print("Getting data from Azure Blob and inserting into Azure SQL")
-        container_name = "data"
-        file_name_parquet = "sim_data.parquet"
-        # Create the BlobServiceClient object
-        blob_service_client = BlobServiceClient.from_connection_string(connect_str)
+    # the below will try to connect to Azure SQL server upto 10 times (required due to server sleeping)
+    max_retries = 10
+    current_retry = 0
 
-        # Get a reference to the container
-        container_client = blob_service_client.get_container_client(container_name)
+    while current_retry < max_retries:
+        try:
+            print("Getting data from Azure Blob and inserting into Azure SQL")
+            print("ATTEMPT NUMBER:", current_retry)
+            container_name = "data"
+            file_name_parquet = "sim_data.parquet"
+            # Create the BlobServiceClient object
+            blob_service_client = BlobServiceClient.from_connection_string(connect_str)
 
-        # Get a reference to the blob
-        blob_client = container_client.get_blob_client(blob=file_name_parquet) 
+            # Get a reference to the container
+            container_client = blob_service_client.get_container_client(container_name)
 
-        print("\nListing blobs...")
+            # Get a reference to the blob
+            blob_client = container_client.get_blob_client(blob=file_name_parquet) 
 
-        # List the blobs in the container
-        blob_list = container_client.list_blobs()
-        for blob in blob_list:
-            print("\t" + blob.name)
+            print("\nListing blobs...")
 
-        downloaded_blob = container_client.download_blob(file_name_parquet)
-        bytes_io = BytesIO(downloaded_blob.readall())
-        df = pd.read_parquet(bytes_io)
-        print(df.head())
+            # List the blobs in the container
+            blob_list = container_client.list_blobs()
+            for blob in blob_list:
+                print("\t" + blob.name)
 
-        ### insert into Azure SQL
-        # drivers = [item for item in pyodbc.drivers()]
-        # driver = drivers[-1]
-        # print("driver:{}".format(driver))
+            downloaded_blob = container_client.download_blob(file_name_parquet)
+            bytes_io = BytesIO(downloaded_blob.readall())
+            df = pd.read_parquet(bytes_io)
+            print(df.head())
 
-        # get variables from Airflow
-        server_name = Variable.get("server_port")
-        database_name = Variable.get("database")
-        username = Variable.get("username")
-        password = Variable.get("password")
+            ### insert into Azure SQL
+            # drivers = [item for item in pyodbc.drivers()]
+            # driver = drivers[-1]
+            # print("driver:{}".format(driver))
 
-        # Create a connection string
-        conn_str = f"DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={server_name};DATABASE={database_name};UID={username};PWD={password}"
-        print("THIS IS THE CONNECTION STRING: ", conn_str)
+            # get variables from Airflow
+            server_name = Variable.get("server_port")
+            database_name = Variable.get("database")
+            username = Variable.get("username")
+            password = Variable.get("password")
 
-        # Establish the connection
-        conn = pyodbc.connect(conn_str)
-        cursor = conn.cursor()
+            # Create a connection string
+            conn_str = f"DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={server_name};DATABASE={database_name};UID={username};PWD={password}"
+            print("THIS IS THE CONNECTION STRING: ", conn_str)
 
-        # Insert rows from the DataFrame into the SQL Server table
-        for index, row in df.iterrows():
-            cursor.execute(
-                "INSERT INTO Summary.SimTest (patient_id, provider_id, arrival_mode, priority, triage_outcome, time_in_system, attendance_time, departure_time, admitted, doctor_id_seen) "
-                "OUTPUT INSERTED.patient_id "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                row['patient_id'], row['provider_id'], row['arrival_mode'], row['priority'], row['triage_outcome'], row['time_in_system'], row['attendance_time'], row['departure_time'], row['admitted'], row['doctor_id_seen'] 
-            )
-            inserted_patient_id = cursor.fetchone()[0]
-            print(f"Inserted Patient ID: {inserted_patient_id}")
+            # Establish the connection
+            conn = pyodbc.connect(conn_str)
+            cursor = conn.cursor()
 
-        # Commit the changes and close the connection
-        conn.commit()
-        conn.close()
-    except Exception as ex:
-            print('Exception:')
-            print(ex)
+            # Insert rows from the DataFrame into the SQL Server table
+            for index, row in df.iterrows():
+                cursor.execute(
+                    "INSERT INTO Summary.SimTest (patient_id, provider_id, arrival_mode, priority, triage_outcome, time_in_system, attendance_time, departure_time, admitted, doctor_id_seen) "
+                    "OUTPUT INSERTED.patient_id "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    row['patient_id'], row['provider_id'], row['arrival_mode'], row['priority'], row['triage_outcome'], row['time_in_system'], row['attendance_time'], row['departure_time'], row['admitted'], row['doctor_id_seen'] 
+                )
+                inserted_patient_id = cursor.fetchone()[0]
+                print(f"Inserted Patient ID: {inserted_patient_id}")
 
+            # Commit the changes and close the connection
+            conn.commit()
+            conn.close()
+
+            # Break out of the loop if the connection and insertion were successful
+            break
+        except pyodbc.Error as ex:
+            if 'Login timeout expired' in str(ex):
+                current_retry += 1
+                print(f"Login timeout expired. Retrying {current_retry}/{max_retries}...")
+                time.sleep(5)  # Add a delay before retrying
+            else:
+                print('Exception:')
+                print(ex)
+                break  # Break out of the loop for other exceptions
+
+    if current_retry == max_retries:
+        print(f"Max retries ({max_retries}) reached. Unable to establish a connection.")
 def clean_up_postgres():
     ### function to clean up data left in postgres and in Azure Blob to limit size of file ###
     # Modify these parameters with your database credentials
