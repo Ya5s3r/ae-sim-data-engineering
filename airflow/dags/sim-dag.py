@@ -188,7 +188,7 @@ def insert_into_azure_sql():
 
             # Create a connection string
             conn_str = f"DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={server_name};DATABASE={database_name};UID={username};PWD={password}"
-            print("THIS IS THE CONNECTION STRING: ", conn_str)
+            #print("THIS IS THE CONNECTION STRING: ", conn_str)
 
             # Establish the connection
             conn = pyodbc.connect(conn_str)
@@ -243,7 +243,10 @@ def clean_up_postgres():
 
     try:
         # Execute the query
+        print("Attempting to truncate postgres")
         cursor.execute(sql_query)
+        # Make the changes to the database persistent
+        connection.commit()
     
     finally:
         # Close the cursor and connection
