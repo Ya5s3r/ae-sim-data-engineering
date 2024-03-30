@@ -9,6 +9,9 @@ from io import BytesIO
 from azure.identity import DefaultAzureCredential
 from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
 
+# gcp storage api
+from google.cloud import storage
+
 from datetime import datetime, timedelta
 import pendulum
 # import subprocess
@@ -134,6 +137,44 @@ def insert_into_azure_str():
         #     blob_client.upload_blob(data)
         #     print("upload complete!")
 
+    except Exception as ex:
+        print('Exception:')
+        print(ex)
+
+# upload to GCP storage bucket
+def upload_to_gcs(df, bucket_name, file_name):
+    """Uploads DataFrame to Google Cloud Storage."""
+    # Create a storage client
+    client = storage.Client()
+
+    # Get the bucket
+    bucket = client.bucket(bucket_name)
+
+    # Create a blob object
+    blob = bucket.blob(file_name)
+
+    # Convert DataFrame to Parquet file
+    parquet_file = BytesIO()
+    df.to_parquet(parquet_file, engine='pyarrow')
+    parquet_file.seek(0)  # Change the stream position back to the beginning after writing
+
+    # Upload the Parquet file
+    blob.upload_from_file(parquet_file, content_type='application/octet-stream')
+    print(f"File uploaded to GCS bucket {bucket_name} with name {file_name}")
+
+
+def insert_into_gcs():
+    # get current data in Postgres
+    df = read_data_from_postgres()
+
+    # Specify your GCS bucket name and file name
+    bucket_name = 'ae_sim_data'
+    file_name = 'sim_data.parquet'
+
+    try:
+        print("Placing data as Google Cloud Storage blob in parquet format")
+        upload_to_gcs(df, bucket_name, file_name)
+        print("Parquet upload complete!")
     except Exception as ex:
         print('Exception:')
         print(ex)
@@ -351,6 +392,9 @@ def sim_taskflow_api():
     @task()
     def upload_to_azure():
         insert_into_azure_str()
+
+    def upload_to_gcp():
+        insert_into_gcs()
 
     @task()
     def insert_to_sql():
