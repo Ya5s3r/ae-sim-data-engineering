@@ -292,7 +292,7 @@ def sim_taskflow_api():
         clean_up_postgres()
     
     # Set up dependencies
-    start_task >> loop_simulation() >> upload_to_azure() #>> clean_up() # optional step after upload to Azure > >> insert_to_sql()
+    start_task >> loop_simulation() >> upload_to_azure() >> clean_up() # optional step after upload to Azure > >> insert_to_sql()
 # Instantiate the DAG
 dag_instance = sim_taskflow_api()
 
