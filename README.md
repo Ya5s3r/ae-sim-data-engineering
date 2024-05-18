@@ -9,6 +9,7 @@ The project workflow can be summarized as follows:
 1. **SimPy Discrete Event Simulation**:
    - A simulation using the SimPy library is executed to generate data.
    - The simulation results are stored in a PostgreSQL database.
+   - A more detailed overview of the simulation model and how it was developed can be found [here](https://ya5s3r-discrete-event-sim-app-hello-oykuyx.streamlit.app)
 
 2. **Airflow Orchestration**:
    - Apache Airflow is used to orchestrate the simulation and data processing tasks.
