@@ -24,7 +24,7 @@ The project workflow can be summarized as follows:
 
 This repo includes code for the first part of the below diagram upto and including the Azure gen2 storage upload.
 
-![Project Architecture](images/sim-data-engineering-2.drawio.png)
+![Project Architecture](images/sim-data-engineering-2.drawio-2.png)
 
 ## Getting Started
 
