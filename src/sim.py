@@ -84,7 +84,7 @@ class p:
     # simulation run metrics
     warm_up = 120
     sim_duration = 1440
-    number_of_runs = 10
+    number_of_runs = 50
 
     # some placeholders used to track wait times for resources
     wait_triage = []
