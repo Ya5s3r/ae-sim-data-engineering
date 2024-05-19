@@ -33,7 +33,7 @@ After cloning the repo and having Docker installed locally, the only local file 
 string to your Azure gen2 storage. This can be found under *Access keys* in the gen2 account.
 This needs to be saved in a file in root directory of this project named *azure_secret.txt*
 
-It is useful to use *Docker secrets* as described here... https://docs.docker.com/engine/swarm/secrets/
+It is useful to use *Docker secrets* as described [here](https://docs.docker.com/engine/swarm/secrets/)
 
 ## Part 2
 
