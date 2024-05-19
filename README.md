@@ -2,6 +2,12 @@
 
 This repository contains the code and configuration for the first part of a data engineering project. The focus is on setting up a SimPy discrete event simulation, orchestrating it using Airflow within a Docker container, and managing data flow to and from PostgreSQL and Azure Data Lake Storage Gen2. This mimics the process of obtaining data from a backend system and placing it to a centralised place.
 
+This repo includes code for the first part of the below diagram upto and including the Azure gen2 storage upload.
+
+## Project Architecture
+
+![Project Architecture](images/sim-data-engineering-2.drawio-2.png)
+
 ## Project Overview
 
 The project workflow can be summarized as follows:
@@ -20,12 +26,6 @@ The project workflow can be summarized as follows:
    - After the simulation completes, the DAG extracts the data from PostgreSQL.
    - The data is then uploaded to an Azure Data Lake Storage Gen2 container.
    - Docker secrets are utilized to securely store the connection string for the Azure storage account.
-
-## Project Architecture
-
-This repo includes code for the first part of the below diagram upto and including the Azure gen2 storage upload.
-
-![Project Architecture](images/sim-data-engineering-2.drawio-2.png)
 
 ## Getting Started
 
